@@ -114,7 +114,7 @@
 			<key>File</key>
 			<string>Debug</string>
 			<key>Title</key>
-			<string>Debug settings</string>
+			<string>Logs over HTTP</string>
 			<key>Type</key>
 			<string>PSChildPaneSpecifier</string>
 		</dict>

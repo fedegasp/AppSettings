@@ -31,6 +31,7 @@ enum SettingType: String {
 typealias Key = String
 
 extension Key {
+    static let StringsTable = "StringsTable"
     static let PreferenceSpecifiers = "PreferenceSpecifiers"
     static let kType = "Type"
     static let Title = "Title"
@@ -52,8 +53,12 @@ protocol SettingProtocol {
     var settingType: SettingType { get set }
 }
 
-private func emit(_ item: [Key:AnyObject]) -> SettingProtocol? {
-    let title = item[.Title] as? String ?? ""
+private func emit(_ item: [Key:AnyObject], tableName: String?, bundle: Bundle) -> SettingProtocol? {
+    
+    let titleKey = item[.Title] as? String ?? ""
+    let title = NSLocalizedString(titleKey, tableName: tableName,
+                                  bundle: bundle, value: titleKey, comment: "")
+    
     guard let type = item[Key.kType] as? String,
           let settingType = SettingType(rawValue: type) else {
         return nil
@@ -110,13 +115,16 @@ private func emit(_ item: [Key:AnyObject]) -> SettingProtocol? {
             return nil
         }
         return Setting(title: title, key: key, defaultValue: item[.DefaultValue], settingType: settingType,
-                       titles: titles, values: values)
+                       titles: titles.compactMap({ NSLocalizedString($0, tableName: tableName,
+                                                                     bundle: bundle, value: $0, comment: "") }),
+                       values: values)
     
     case .PSSliderSpecifier:
         let defaultValue = item[.DefaultValue] ?? (Float(0.0) as AnyObject)
         let minValue = (item[.MinimumValue] as? Float) ?? Float(0.0)
         let maxValue = (item[.MaximumValue] as? Float) ?? Float(0.0)
-        return Setting(title: title, key: key, defaultValue: defaultValue, settingType: settingType, minValue: minValue, maxValue: maxValue)
+        return Setting(title: title, key: key, defaultValue: defaultValue, settingType: settingType,
+                       minValue: minValue, maxValue: maxValue)
     }
 }
 
@@ -163,8 +171,13 @@ func loadSettings(in file: String = "Root") -> [Group] {
     
     guard let bundlePath = Bundle.main.path(forResource: "Settings", ofType: "bundle"),
           let settingsBundle = Bundle(path: bundlePath),
-          let plistPath = settingsBundle.path(forResource: file, ofType: "plist"),
-          let list = read(plist: plistPath) else {
+          let plistPath = settingsBundle.path(forResource: file, ofType: "plist") else {
+        return []
+    }
+    
+    let (optList, localizationTable) = read(plist: plistPath)
+    
+    guard let list = optList else {
         return []
     }
     
@@ -173,7 +186,7 @@ func loadSettings(in file: String = "Root") -> [Group] {
     var group: Group?
     
     for dict in list {
-        if let item = emit(dict) {
+        if let item = emit(dict, tableName: localizationTable, bundle: settingsBundle) {
             if let item = item as? Group {
                 if group == nil {
                     group = Group(title: "", key: "", footer: nil, settingType: .PSGroupSpecifier, settings: nil)
@@ -199,18 +212,19 @@ func loadSettings(in file: String = "Root") -> [Group] {
     return result
 }
 
-func read(plist path: String) -> [[Key:AnyObject]]? {
+func read(plist path: String) -> ([[Key:AnyObject]]?, String?) {
     var propertyListFormat =  PropertyListSerialization.PropertyListFormat.xml
     guard let plistXML = FileManager.default.contents(atPath: path) else {
-        return nil
+        return (nil, nil)
     }
     
     do {
         let plistData = try PropertyListSerialization.propertyList(from: plistXML, options: .mutableContainersAndLeaves, format: &propertyListFormat) as? [String:AnyObject]
-        return plistData?[Key.PreferenceSpecifiers] as? [[Key:AnyObject]]
+        return (plistData?[Key.PreferenceSpecifiers] as? [[Key:AnyObject]],
+                plistData?[Key.StringsTable] as? String)
     }
     catch {
         print("Error reading plist: \(error), format: \(propertyListFormat)")
     }
-    return nil
+    return (nil, nil)
 }
